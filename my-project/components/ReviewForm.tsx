@@ -7,7 +7,7 @@ import { inputSchema } from "@/lib/validation";
 import { z } from "zod";
 import { ActionState } from "@/lib/GlobalTypes";
 import { toast } from "sonner";
-import { recommendPlayers } from "@/lib/actions";
+// Switched to client-side CSV processing to work on Vercel without server file access
 import ViewResults from "./ViewResults";
 import { useRouter } from "next/navigation";
 
@@ -62,25 +62,77 @@ const ReviewForm = () => {
 
       await inputSchema.parseAsync(data);
 
-      const result = await recommendPlayers(data);
-      console.log("result", result);
+      // Client-side: fetch merged CSV from public and compute recommendations
+      const resp = await fetch("/merged_player_data.csv", { cache: "no-store" });
+      if (!resp.ok) throw new Error("Failed to fetch dataset");
+      const csvText = await resp.text();
+      const lines = csvText.split(/\r?\n/).filter(Boolean);
+      const headers = lines[0].split(",").map((h) => h.trim());
+      type CsvPlayer = Record<string, string>;
+      const rows: CsvPlayer[] = lines.slice(1).map((line) => {
+        const cols = line.split(",");
+        const obj: CsvPlayer = {};
+        headers.forEach((h, i) => { obj[h] = (cols[i] ?? "").trim(); });
+        return obj;
+      });
 
-      if (result.status === "SUCCESS") {
-        setResults(result.data);
+      // Helpers mirroring server action logic
+      const parseCurrency = (value: string): number => {
+        const clean = String(value).trim().replace(/\s+/g, "");
+        if (clean === "N/A" || clean === "") return Number.POSITIVE_INFINITY;
+        const numeric = clean.replace(/\$/g, "").replace(/,/g, "").replace(/[^0-9.]/g, "");
+        return parseFloat(numeric) || Number.POSITIVE_INFINITY;
+      };
+      const formatCurrency = (amount: number): string => amount === Number.POSITIVE_INFINITY ? "N/A" : new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(amount);
+      const matchPosition = (playerPos: string, inputPos: string): boolean => {
+        const normalizedInput = inputPos.toLowerCase().split("-");
+        const positions = playerPos.toLowerCase().replace(/[^a-z-]/g, "").split('-');
+        return positions.every((pos) => normalizedInput.includes(pos));
+      };
+      const calculateScore = (p: { average_points: number; average_rebounds: number; average_assists: number; average_steals: number; average_blocks: number; }): number => (
+        (p.average_points || 0) * 0.5 +
+        (p.average_rebounds || 0) * 0.25 +
+        (p.average_assists || 0) * 0.15 +
+        (p.average_steals || 0) * 0.05 +
+        (p.average_blocks || 0) * 0.05
+      );
+
+      const players = rows.map((r) => ({
+        full_name: r.full_name,
+        position: r.position,
+        height: parseFloat(r.height || "0") || 0,
+        salary: parseCurrency(r.salary || ""),
+        average_points: parseFloat(r.average_points || "0") || 0,
+        average_assists: parseFloat(r.average_assists || "0") || 0,
+        average_rebounds: parseFloat(r.average_rebounds || "0") || 0,
+        average_steals: parseFloat(r.average_steals || "0") || 0,
+        average_blocks: parseFloat(r.average_blocks || "0") || 0,
+        age: parseInt(r.age || "0") || 0,
+      }));
+
+      const userHeightCm = height * 2.54;
+      const filtered = players.filter((p) => {
+        if (!p.full_name || isNaN(p.salary)) return false;
+        return (
+          p.salary <= budget &&
+          p.height >= userHeightCm &&
+          p.age <= age &&
+          matchPosition(p.position, position) &&
+          p.average_points > 0
+        );
+      });
+
+      const scored = filtered.map((p) => ({ ...p, score: calculateScore(p) })).sort((a, b) => b.score - a.score);
+
+      const top = scored.slice(0, 5).map((p) => ({ ...p, salary: formatCurrency(p.salary) }));
+
+      setResults(top);
         toast.success("Success", {
           description: "Form submitted successfully",
         });
         return parseServerActionResponse({
           status: "SUCCESS",
-          data: result.data,
-        });
-      } else {
-        toast.error("Error", {
-          description: "Failed to fetch data",
-        });
-        return parseServerActionResponse({
-          status: "ERROR",
-          error: result.error,
+          data: top,
         });
       }
     } catch (errors) {
