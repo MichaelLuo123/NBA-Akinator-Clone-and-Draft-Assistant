@@ -10,7 +10,6 @@ export async function GET() {
         console.log("Fetching data...");    
         const statsFilePath = path.join(process.cwd(), 'public', 'playerdata.csv');
         const salaryFilePath = path.join(process.cwd(), 'public', 'nbaplayersalary.csv');
-        const mergedFilePath = path.join(process.cwd(), 'public', 'merged_player_data.csv');
 
         console.log("Stats file path:", statsFilePath);
         console.log("Salary file path:", salaryFilePath);
@@ -50,16 +49,9 @@ export async function GET() {
         })
         console.log("Merged Data:", mergedData);
 
-        const csvContent = Papa.unparse(mergedData);
-    
-        // Write the CSV to a new file
-        await fs.writeFile(mergedFilePath, csvContent, 'utf-8');
-        console.log(`Merged CSV file created at: ${mergedFilePath}`);
-    
         return NextResponse.json({
             status: "SUCCESS",
-            data: mergedData,
-            csvPath: '/merged_player_data.csv' // Path relative to public directory
+            data: mergedData
         });
 
     } catch (error) {
