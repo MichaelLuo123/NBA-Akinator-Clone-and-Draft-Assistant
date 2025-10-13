@@ -81,9 +81,16 @@ const ReviewForm = () => {
         const clean = String(value).trim().replace(/\s+/g, "");
         if (clean === "N/A" || clean === "") return Number.POSITIVE_INFINITY;
         const numeric = clean.replace(/\$/g, "").replace(/,/g, "").replace(/[^0-9.]/g, "");
-        return parseFloat(numeric) || Number.POSITIVE_INFINITY;
+        const parsed = parseFloat(numeric);
+        if (!isFinite(parsed)) return Number.POSITIVE_INFINITY;
+        // If salary appears to be provided in millions (e.g., 51 -> $51,000,000), upscale
+        return parsed < 10000 ? parsed * 1_000_000 : parsed;
       };
-      const formatCurrency = (amount: number): string => amount === Number.POSITIVE_INFINITY ? "N/A" : new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(amount);
+      const formatCurrency = (amount: number): string => {
+        if (amount === Number.POSITIVE_INFINITY) return "N/A";
+        if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+      };
       const matchPosition = (playerPos: string, inputPos: string): boolean => {
         const normalizedInput = inputPos.toLowerCase().split("-");
         const positions = playerPos.toLowerCase().replace(/[^a-z-]/g, "").split('-');
