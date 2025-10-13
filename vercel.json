@@ -1,9 +1,0 @@
-{
-  "version": 2,
-  "framework": "nextjs",
-  "installCommand": "cd my-project && npm install",
-  "buildCommand": "cd my-project && npm run build",
-  "outputDirectory": "my-project/.next",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD || echo 'changed'"
-}
-
