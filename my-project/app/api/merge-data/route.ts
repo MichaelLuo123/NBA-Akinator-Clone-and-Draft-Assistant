@@ -42,7 +42,7 @@ export async function GET() {
         })
         console.log("Salary map:", salaryMap);
 
-        const mergedData = statsData.map((player: any) => {
+        const mergedData = statsData.map((player: PlayerDataType) => {
             return {
                 ...player,
                 salary: salaryMap[player.full_name] || "N/A",

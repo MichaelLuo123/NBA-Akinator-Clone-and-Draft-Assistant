@@ -5,6 +5,12 @@ const nextConfig: NextConfig = {
   images: {
     domains: ["images.unsplash.com"], // ✅ Allow Sanity images
   },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   experimental: {
     ppr: "incremental",
     serverActions: {

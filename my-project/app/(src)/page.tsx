@@ -13,8 +13,14 @@ export default function Home() {
       />
       </div>
       <HomeContent />
-      <div className="">
-      <img src={"/assets/Basketball.png"} alt="A nice image" />
+      <div className="relative h-[120px] w-[120px] sm:h-[160px] sm:w-[160px]">
+        <Image
+          src="/assets/Basketball.png"
+          alt="Basketball"
+          fill
+          className="object-contain"
+          priority
+        />
       </div>
     </div>
   );

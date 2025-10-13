@@ -24,6 +24,7 @@ const GuessYourLegend = () => {
   const [gameState, setGameState] = useState<"intro" | "playing" | "result">(
     "intro"
   );
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [conference, setConference] = useState<string | null>(null); // east, west
   const [currentQuestion, setCurrentQuestion] = useState<string>("");
   const [playersRemaining, setPlayersRemaining] = useState<number>(0);
@@ -102,7 +103,7 @@ const GuessYourLegend = () => {
         );
 
         // Add conference property based on team
-        const enrichedData = playersArray.map((player: any) => {
+        const enrichedData = playersArray.map((player: Record<string, string>) => {
           // Define which teams are in which conference
           const eastTeams = [
             "Celtics",
@@ -151,7 +152,7 @@ const GuessYourLegend = () => {
           }
 
           // Fix position format for consistency
-          let position = player.position;
+          let position = player.position as string;
           if (position === "Center-Forward") position = "F-C";
           else if (position === "Forward-Center") position = "F-C";
           else if (position === "Guard-Forward") position = "G-F";
@@ -165,16 +166,16 @@ const GuessYourLegend = () => {
             ...player,
             conference,
             position,
-            height: parseFloat(player.height) || 0,
-            weight: parseFloat(player.weight) || 0,
-            age: parseInt(player.age) || 0,
-            average_points: parseFloat(player.average_points) || 0,
-            average_assists: parseFloat(player.average_assists) || 0,
-            average_rebounds: parseFloat(player.average_rebounds) || 0,
-            average_steals: parseFloat(player.average_steals) || 0,
-            average_blocks: parseFloat(player.average_blocks) || 0,
-            awards_count: parseInt(player.awards_count) || 0,
-          };
+            height: parseFloat(player.height || "0") || 0,
+            weight: parseFloat(player.weight || "0") || 0,
+            age: parseInt(player.age || "0") || 0,
+            average_points: parseFloat(player.average_points || "0") || 0,
+            average_assists: parseFloat(player.average_assists || "0") || 0,
+            average_rebounds: parseFloat(player.average_rebounds || "0") || 0,
+            average_steals: parseFloat(player.average_steals || "0") || 0,
+            average_blocks: parseFloat(player.average_blocks || "0") || 0,
+            awards_count: parseInt(player.awards_count || "0") || 0,
+          } as unknown as Player;
         });
 
         setNbaData(enrichedData as Player[]);
