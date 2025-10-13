@@ -25,7 +25,7 @@ export async function recommendPlayers(formData: DataType) {
     const input = await inputSchema.parseAsync(formData);
 
     // 2. Load and parse CSV data
-    const mergedFilePath = path.join(process.cwd(), 'data', 'merged_player_data.csv');
+    const mergedFilePath = path.join(process.cwd(), 'public', 'merged_player_data.csv');
     const csvData = await fs.readFile(mergedFilePath, 'utf-8');
     
     const players: Player[] = parse(csvData, {
@@ -143,7 +143,7 @@ export const fetchGameData = async () => {
     try {
         const mergedFilePath = path.join(
             process.cwd(),
-            "data",
+            "public",
             "merged_player_data.csv"
           );
         const csvData = await fs.readFile(mergedFilePath, "utf-8");
