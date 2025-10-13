@@ -26,7 +26,16 @@ export async function recommendPlayers(formData: DataType) {
 
     // 2. Load and parse CSV data
     const mergedFilePath = path.join(process.cwd(), 'public', 'merged_player_data.csv');
-    const csvData = await fs.readFile(mergedFilePath, 'utf-8');
+    let csvData: string;
+    try {
+      csvData = await fs.readFile(mergedFilePath, 'utf-8');
+    } catch {
+      const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '';
+      const base = process.env.NEXT_PUBLIC_BASE_URL || vercelUrl || 'http://127.0.0.1:3000';
+      const resp = await fetch(`${base}/merged_player_data.csv`, { cache: 'no-store' });
+      if (!resp.ok) throw new Error('Failed to load merged_player_data.csv');
+      csvData = await resp.text();
+    }
     
     const players: Player[] = parse(csvData, {
       columns: true,
@@ -146,7 +155,16 @@ export const fetchGameData = async () => {
             "public",
             "merged_player_data.csv"
           );
-        const csvData = await fs.readFile(mergedFilePath, "utf-8");
+        let csvData: string;
+        try {
+          csvData = await fs.readFile(mergedFilePath, "utf-8");
+        } catch {
+          const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '';
+          const base = process.env.NEXT_PUBLIC_BASE_URL || vercelUrl || 'http://127.0.0.1:3000';
+          const resp = await fetch(`${base}/merged_player_data.csv`, { cache: 'no-store' });
+          if (!resp.ok) throw new Error('Failed to load merged_player_data.csv');
+          csvData = await resp.text();
+        }
     
         const record =  parse(csvData, {
             columns: true,
