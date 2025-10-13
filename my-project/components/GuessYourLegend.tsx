@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { fetchGameData } from "@/lib/actions";
+// Data is loaded client-side from /merged_player_data.csv in production
 
 // Define TypeScript interface for player data
 interface Player {
@@ -92,15 +92,22 @@ const GuessYourLegend = () => {
   };
 
   // Load NBA player data
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const loadGameData = async () => {
       try {
         setIsLoading(true);
-        const data = await fetchGameData();
-
-        const playersArray = Object.values(data).filter(
-          (player) => typeof player === "object" && player !== null
-        );
+        const res = await fetch("/merged_player_data.csv", { cache: "no-store" });
+        const csvText = await res.text();
+        const lines = csvText.split(/\r?\n/).filter(Boolean);
+        if (lines.length === 0) throw new Error("Empty CSV");
+        const headers = lines[0].split(",").map((h) => h.trim());
+        const playersArray = lines.slice(1).map((line) => {
+          const cols = line.split(",");
+          const obj: Record<string, string> = {};
+          headers.forEach((h, i) => { obj[h] = (cols[i] ?? "").trim(); });
+          return obj;
+        });
 
         // Add conference property based on team
         const enrichedData = playersArray.map((player: Record<string, string>) => {
@@ -166,15 +173,15 @@ const GuessYourLegend = () => {
             ...player,
             conference,
             position,
-            height: parseFloat(player.height || "0") || 0,
-            weight: parseFloat(player.weight || "0") || 0,
-            age: parseInt(player.age || "0") || 0,
-            average_points: parseFloat(player.average_points || "0") || 0,
-            average_assists: parseFloat(player.average_assists || "0") || 0,
-            average_rebounds: parseFloat(player.average_rebounds || "0") || 0,
-            average_steals: parseFloat(player.average_steals || "0") || 0,
-            average_blocks: parseFloat(player.average_blocks || "0") || 0,
-            awards_count: parseInt(player.awards_count || "0") || 0,
+            height: parseFloat(player.height ?? "0") || 0,
+            weight: parseFloat(player.weight ?? "0") || 0,
+            age: parseInt(player.age ?? "0") || 0,
+            average_points: parseFloat(player.average_points ?? "0") || 0,
+            average_assists: parseFloat(player.average_assists ?? "0") || 0,
+            average_rebounds: parseFloat(player.average_rebounds ?? "0") || 0,
+            average_steals: parseFloat(player.average_steals ?? "0") || 0,
+            average_blocks: parseFloat(player.average_blocks ?? "0") || 0,
+            awards_count: parseInt(player.awards_count ?? "0") || 0,
           } as unknown as Player;
         });
 
