@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 const ReviewForm = () => {
   const router = useRouter();
   const [budgetInputValue, setBudgetInputValue] = useState("");
+  const [budgetUnit, setBudgetUnit] = useState<"dollars" | "millions">("dollars");
   const [heightInput, setHeightInput] = useState("");
   const [ageInput, setAgeInput] = useState("");
   const [positionInput, setPositionInput] = useState("");
@@ -48,10 +49,18 @@ const ReviewForm = () => {
     const getPosition = positionInput;
     console.log("get psosition", getPosition);
     try {
-      const budget = parseInt(getBudget);
-      const height = parseInt(getHeight);
-      const age = parseInt(getAge);
-      const position = getPosition.toLowerCase();
+      const budgetRaw = parseInt(getBudget);
+      const heightRaw = parseInt(getHeight);
+      const ageRaw = parseInt(getAge);
+      const position = (getPosition || "").toLowerCase().trim();
+
+      // Lenient defaults to avoid NaN breaking filters
+      // Budget interpreted per selector
+      const budget = Number.isFinite(budgetRaw) && budgetRaw >= 0
+        ? (budgetUnit === "millions" ? budgetRaw * 1_000_000 : budgetRaw)
+        : Number.POSITIVE_INFINITY;
+      const height = Number.isFinite(heightRaw) && heightRaw >= 0 ? heightRaw : 0;
+      const age = Number.isFinite(ageRaw) && ageRaw > 0 ? ageRaw : Number.POSITIVE_INFINITY;
 
       const data = {
         budget: budget,
@@ -81,13 +90,20 @@ const ReviewForm = () => {
         const clean = String(value).trim().replace(/\s+/g, "");
         if (clean === "N/A" || clean === "") return Number.POSITIVE_INFINITY;
         const numeric = clean.replace(/\$/g, "").replace(/,/g, "").replace(/[^0-9.]/g, "");
-        return parseFloat(numeric) || Number.POSITIVE_INFINITY;
+        const parsed = parseFloat(numeric);
+        if (!isFinite(parsed)) return Number.POSITIVE_INFINITY;
+        // CSV can be raw millions like 50 -> $50,000,000
+        return parsed < 10000 ? parsed * 1_000_000 : parsed;
       };
-      const formatCurrency = (amount: number): string => amount === Number.POSITIVE_INFINITY ? "N/A" : new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(amount);
+      const formatCurrency = (amount: number): string => amount === Number.POSITIVE_INFINITY ? "N/A" : (amount >= 1_000_000 ? `$${(amount/1_000_000).toFixed(1)}M` : new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(amount));
       const matchPosition = (playerPos: string, inputPos: string): boolean => {
-        const normalizedInput = inputPos.toLowerCase().split("-");
-        const positions = playerPos.toLowerCase().replace(/[^a-z-]/g, "").split('-');
-        return positions.every((pos) => normalizedInput.includes(pos));
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, " ").trim();
+        const tokens = (s: string) => norm(s).split(/\s+/).filter(Boolean);
+        const playerTokens = tokens(playerPos);
+        const inputTokens = tokens(inputPos);
+        if (inputTokens.length === 0) return true; // empty input matches all
+        // Match if any overlap between tokens (lenient partial match)
+        return playerTokens.some((t) => inputTokens.includes(t));
       };
       const calculateScore = (p: { average_points: number; average_rebounds: number; average_assists: number; average_steals: number; average_blocks: number; }): number => (
         (p.average_points || 0) * 0.5 +
@@ -168,14 +184,26 @@ const ReviewForm = () => {
           <p className="text-black text-[14px] sm:text-[16px]">
             Please select your max budget in US dollars
           </p>
-          <input
-            className="w-full bg-transparent border-[1px] border-[#dbdbdb] rounded-[5px] h-full px-2 text-black text-[10px] sm:text-[12px] min-h-[40px] focus:outline-none"
-            placeholder="Enter your budget"
-            value={budgetInputValue}
-            onChange={(e) => setBudgetInputValue(e.target.value)}
-            disabled={isPending}
-            name="budget"
-          ></input>
+          <div className="flex gap-2">
+            <input
+              className="w-full bg-transparent border-[1px] border-[#dbdbdb] rounded-[5px] h-full px-2 text-black text-[10px] sm:text-[12px] min-h-[40px] focus:outline-none"
+              placeholder={budgetUnit === "dollars" ? "Enter max budget in USD (e.g., 50000000)" : "Enter max budget in millions (e.g., 50)"}
+              value={budgetInputValue}
+              onChange={(e) => setBudgetInputValue(e.target.value)}
+              disabled={isPending}
+              name="budget"
+            />
+            <select
+              className="bg-transparent border-[1px] border-[#dbdbdb] rounded-[5px] px-2 text-black text-[10px] sm:text-[12px] min-h-[40px]"
+              value={budgetUnit}
+              onChange={(e) => setBudgetUnit(e.target.value as "dollars" | "millions")}
+              disabled={isPending}
+              aria-label="Budget unit"
+            >
+              <option value="dollars">Dollars</option>
+              <option value="millions">Millions</option>
+            </select>
+          </div>
           {errors.budget && (
             <p className="text-[#D60244] text-[10px] sm:text-[12px]">
               Please enter a number between 1 to 1 billion

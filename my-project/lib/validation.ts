@@ -23,8 +23,8 @@ export const PositionEnum = z.enum([
   
 
 export const inputSchema = z.object({
-    budget: z.number().min(10000).max(100000000000),
+    budget: z.number().min(0).max(1_000_000_000_000), // allow small budgets in dollars
     height: z.number().min(0).max(100),
-    age: z.number().min(18).max(80),
+    age: z.number().min(0).max(120),
     position: PositionSchema
 })
