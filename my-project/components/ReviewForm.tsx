@@ -234,9 +234,9 @@ const ReviewForm = () => {
           ></input>
           {errors.position && (
             <p className="text-[#D60244] text-[10px] sm:text-[12px] text-wrap">
-              Please enter a valid position. "Center", "Forward", "Guard",
-              "Center-Forward", "Forward-Center", "Forward-Guard",
-              "Guard-Forward";
+              Please enter a valid position. &quot;Center&quot;, &quot;Forward&quot;, &quot;Guard&quot;,
+              &quot;Center-Forward&quot;, &quot;Forward-Center&quot;, &quot;Forward-Guard&quot;,
+              &quot;Guard-Forward&quot;.
             </p>
           )}
         </div>
