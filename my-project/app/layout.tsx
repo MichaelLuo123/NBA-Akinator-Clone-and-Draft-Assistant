@@ -74,7 +74,7 @@ export default function RootLayout({
         name="viewport"
         content="width=device-width, initial-scale=1, viewport-fit=cover"
       />
-      <body className={`${roboto.variable} antialiased`}>{children}</body>
+      <body className={`${roboto.variable} antialiased min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-fuchsia-50`}>{children}</body>
     </html>
   );
 }

@@ -32,6 +32,26 @@ const GuessYourLegend = () => {
   const [logMessages, setLogMessages] = useState<string[]>([]);
   const [nbaData, setNbaData] = useState<Player[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [inFinalRound, setInFinalRound] = useState<boolean>(false);
+  const [finalCandidates, setFinalCandidates] = useState<Player[]>([]);
+  const [finalIndex, setFinalIndex] = useState<number>(0);
+  const [asked, setAsked] = useState<{ question: string; answer: boolean }[]>([]);
+  const [candidateIds, setCandidateIds] = useState<string[]>([]);
+  const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
+  const [useBackend, setUseBackend] = useState<boolean>(false);
+
+  // Probe backend health once on mount; disable backend if unreachable
+  useEffect(() => {
+    const ping = async () => {
+      try {
+        const r = await fetch(`${BACKEND_BASE}/health`, { cache: "no-store" });
+        if (!r.ok) setUseBackend(false);
+      } catch {
+        setUseBackend(false);
+      }
+    };
+    ping();
+  }, []);
 
   // Helper function to convert cm to feet and inches
   const cmToInches = (cm: number): string => {
@@ -179,10 +199,21 @@ const GuessYourLegend = () => {
 
     setPlayersRemaining(currentPlayers.length);
 
-    // If we're down to 5 or fewer players, ask directly
+    // If we're down to 5 or fewer players, enter final round: ask by name sequentially
     if (currentPlayers.length <= 5) {
-      const playerNames = currentPlayers.map((p) => p.full_name).join(", ");
-      setCurrentQuestion(`Is your player one of these: ${playerNames}?`);
+      const valid = currentPlayers.filter(
+        (p) => typeof p.full_name === "string" && p.full_name.trim().length > 0
+      );
+      if (valid.length === 0) {
+        setGameState("result");
+        setGuessedPlayer("Unable to determine – no valid candidate names");
+      addLog("No valid candidate names to confirm.");
+        return;
+      }
+      setInFinalRound(true);
+      setFinalCandidates(valid);
+      setFinalIndex(0);
+      setCurrentQuestion(`Is your player ${valid[0].full_name}?`);
       return;
     }
 
@@ -190,7 +221,7 @@ const GuessYourLegend = () => {
       // We've found the player
       setGameState("result");
       setGuessedPlayer(currentPlayers[0].full_name);
-      addLog(`🏀 My guess is... **${currentPlayers[0].full_name}**!`);
+      addLog(`My guess is... **${currentPlayers[0].full_name}**!`);
       return;
     }
 
@@ -348,28 +379,111 @@ const GuessYourLegend = () => {
   >([]);
 
   // Update the selectConference function to initialize the filtered players
-  const selectConference = (conf: string): void => {
-    setConference(conf.toLowerCase());
+  const selectConference = async (conf: string): Promise<void> => {
+    const c = conf.toLowerCase();
+    setConference(c);
     setGameState("playing");
-    const filteredPlayers = nbaData.filter(
-      (p) => p.conference === conf.toLowerCase()
-    );
-    setCurrentFilteredPlayers(filteredPlayers); // Store initial filtered players
+    const filteredPlayers = nbaData.filter((p) => p.conference === c);
+    setCurrentFilteredPlayers(filteredPlayers);
     setPlayersRemaining(filteredPlayers.length);
     setQuestionsAsked(0);
     setLogMessages([]);
-    addLog(
-      `🔮 Think of an active NBA player from the ${conf}ern Conference...`
-    );
+    setAsked([]);
+    setCandidateIds(filteredPlayers.map((p: any) => String((p as any).id ?? p.full_name)));
+    addLog(`Think of an active NBA player from the ${conf}ern Conference...`);
+    if (useBackend) {
+      try {
+        const res = await fetch(`${BACKEND_BASE}/next-question`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ asked: [], candidate_ids: filteredPlayers.map((p: any) => String((p as any).id ?? p.full_name)) }),
+        });
+        const data = await res.json();
+        setCurrentQuestion(data.question);
+        setPlayersRemaining(data.remaining);
+        return;
+      } catch (e) {
+        console.error(e);
+        setUseBackend(false);
+      }
+    }
     askNextQuestion(filteredPlayers);
   };
 
   // Update handleAnswer to use and update the currentFilteredPlayers
-  const handleAnswer = (answer: boolean): void => {
+  const handleAnswer = async (answer: boolean): Promise<void> => {
     setQuestionsAsked((prev) => prev + 1);
     addLog(
       `Q${questionsAsked + 1}: ${currentQuestion} ${answer ? "Yes" : "No"}`
     );
+
+    if (useBackend) {
+      const nextAsked = [...asked, { question: currentQuestion, answer }];
+      setAsked(nextAsked);
+      try {
+        // If remaining likely small, attempt guess
+        const nextQ = await fetch(`${BACKEND_BASE}/next-question`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ asked: nextAsked, candidate_ids: candidateIds }),
+        });
+        if (nextQ.ok) {
+          const nq = await nextQ.json();
+          setCurrentQuestion(nq.question);
+          setPlayersRemaining(nq.remaining);
+          if (nq.remaining <= 1) {
+            const g = await fetch(`${BACKEND_BASE}/guess`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ asked: nextAsked, candidate_ids: candidateIds }),
+            });
+            if (g.ok) {
+              const gj = await g.json();
+              setGameState("result");
+              setGuessedPlayer(gj.full_name);
+              addLog(`My guess is... **${gj.full_name}**!`);
+              return;
+            }
+          }
+          return;
+        }
+      } catch (e) {
+        console.error(e);
+        setUseBackend(false);
+      }
+      // Fallback to local path below on error
+    }
+
+    // Handle final round (direct name confirmations)
+    if (inFinalRound && currentQuestion.startsWith("Is your player ") && !currentQuestion.includes("one of these")) {
+      const currentCandidate = finalCandidates[finalIndex];
+      if (answer) {
+        setGameState("result");
+        setGuessedPlayer(currentCandidate.full_name);
+        addLog(`🏀 My guess is... **${currentCandidate.full_name}**!`);
+        return;
+      } else {
+        let nextIndex = finalIndex + 1;
+        // advance to next with a valid non-empty name
+        while (
+          nextIndex < finalCandidates.length &&
+          !(typeof finalCandidates[nextIndex].full_name === "string" && finalCandidates[nextIndex].full_name.trim().length > 0)
+        ) {
+          nextIndex += 1;
+        }
+        if (nextIndex < finalCandidates.length) {
+          setFinalIndex(nextIndex);
+          setCurrentQuestion(`Is your player ${finalCandidates[nextIndex].full_name}?`);
+          setPlayersRemaining(finalCandidates.length - nextIndex);
+          return;
+        }
+        // Exhausted candidates without a match
+        setGameState("result");
+        setGuessedPlayer("Unable to determine – no match in final list");
+        addLog("Reached end of candidate list without confirmation.");
+        return;
+      }
+    }
 
     let newFilteredPlayers = [...currentFilteredPlayers]; // Start with current filtered list
 
@@ -522,7 +636,7 @@ const GuessYourLegend = () => {
     if (newFilteredPlayers.length === 1) {
       setGameState("result");
       setGuessedPlayer(newFilteredPlayers[0].full_name);
-      addLog(`🏀 My guess is... **${newFilteredPlayers[0].full_name}**!`);
+      addLog(`My guess is... **${newFilteredPlayers[0].full_name}**!`);
     }
     // Otherwise ask the next question
     else {
@@ -540,13 +654,23 @@ const GuessYourLegend = () => {
     setGuessedPlayer("");
     setLogMessages([]);
     setCurrentFilteredPlayers([]);
+    setInFinalRound(false);
+    setFinalCandidates([]);
+    setFinalIndex(0);
+    setAsked([]);
+    setCandidateIds([]);
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto p-4 bg-white rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold text-center mb-4 text-blue-600">
-        NBA Legend Guesser
-      </h2>
+    <div className="relative min-h-[80vh] w-full bg-gradient-to-br from-sky-50 via-indigo-50 to-fuchsia-50 py-10 px-4">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,0.08),transparent_60%)]" />
+      <div className="relative w-full max-w-4xl mx-auto p-6 sm:p-8 bg-white/85 backdrop-blur-md rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.25)] border border-white/60">
+        <div className="text-center mb-6">
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 bg-clip-text text-transparent">
+            NBA Legend Guesser
+          </h2>
+          <p className="mt-2 text-gray-600">Think of an active player. I’ll find them in as few questions as possible.</p>
+        </div>
 
       {isLoading ? (
         <div className="text-center py-8">
@@ -556,22 +680,22 @@ const GuessYourLegend = () => {
         <>
           {/* Intro Screen */}
           {gameState === "intro" && (
-            <div className="space-y-4 text-center">
-              <p className="text-lg">
-                🔮 Think of an active NBA player and I'll try to guess who it
-                is!
-              </p>
-              <p className="text-gray-600">Select your player's conference:</p>
-              <div className="flex justify-center space-x-4 mt-4">
+            <div className="space-y-5 text-center">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-sm font-medium">
+                <span>Twenty-Questions Challenge</span>
+              </div>
+              <p className="text-lg text-gray-800">Think of an active NBA player and I’ll try to guess who it is.</p>
+              <p className="text-gray-600">Select your player's conference to begin:</p>
+              <div className="flex justify-center gap-4 mt-2">
                 <button
                   onClick={() => selectConference("East")}
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-medium"
+                  className="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 shadow-sm active:scale-[0.99]"
                 >
                   Eastern Conference
                 </button>
                 <button
                   onClick={() => selectConference("West")}
-                  className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg font-medium"
+                  className="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 shadow-sm active:scale-[0.99]"
                 >
                   Western Conference
                 </button>
@@ -581,47 +705,51 @@ const GuessYourLegend = () => {
 
           {/* Game Playing Screen */}
           {gameState === "playing" && (
-            <div className="space-y-4">
-              <div className="flex justify-between mb-2 text-sm">
-                <span className="font-medium">
-                  Players remaining: {playersRemaining}
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-medium">
+                  <span>Players remaining: {playersRemaining}</span>
                 </span>
-                <span className="font-medium">
-                  Questions asked: {questionsAsked}
+                <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium">
+                  <span>Questions asked: {questionsAsked}</span>
                 </span>
               </div>
 
-              <div className="bg-gray-100 p-4 rounded-lg border mb-4">
-                <p className="text-lg font-medium">{currentQuestion}</p>
+              <div className="w-full bg-gray-200/70 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(100, Math.max(5, (questionsAsked / 20) * 100))}%` }}
+                />
               </div>
 
-              <div className="flex justify-center space-x-4">
+              <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 text-center leading-snug">{currentQuestion}</p>
+              </div>
+
+              <div className="flex justify-center gap-4">
                 <button
                   onClick={() => handleAnswer(true)}
-                  className="bg-green-500 hover:bg-green-600 text-white px-8 py-2 rounded-lg font-medium"
+                  className="px-8 py-3 rounded-xl font-semibold text-white bg-emerald-500 hover:bg-emerald-600 active:scale-[0.99] shadow-sm"
                 >
                   Yes
                 </button>
                 <button
                   onClick={() => handleAnswer(false)}
-                  className="bg-red-500 hover:bg-red-600 text-white px-8 py-2 rounded-lg font-medium"
+                  className="px-8 py-3 rounded-xl font-semibold text-white bg-rose-500 hover:bg-rose-600 active:scale-[0.99] shadow-sm"
                 >
                   No
                 </button>
               </div>
 
-              <div className="mt-4">
-                <h3 className="font-medium text-gray-700 mb-1">Game Log:</h3>
-                <div className="bg-gray-50 p-3 rounded-lg border h-32 overflow-y-auto text-sm">
+              <div className="mt-2">
+                <h3 className="font-semibold text-gray-700 mb-2">Game Log</h3>
+                <div className="bg-white p-4 rounded-xl border border-gray-100 h-36 overflow-y-auto text-sm space-y-1">
                   {logMessages.map((msg, idx) => (
                     <p
                       key={idx}
-                      className="mb-1"
+                      className="text-gray-700"
                       dangerouslySetInnerHTML={{
-                        __html: msg.replace(
-                          /\*\*(.*?)\*\*/g,
-                          "<strong>$1</strong>"
-                        ),
+                        __html: msg.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
                       }}
                     ></p>
                   ))}
@@ -632,26 +760,24 @@ const GuessYourLegend = () => {
 
           {/* Result Screen */}
           {gameState === "result" && (
-            <div className="space-y-4 text-center">
+            <div className="space-y-6 text-center">
               <div className="py-3">
-                <h2 className="text-xl font-bold mb-2">🏀 Your player is:</h2>
-                <p className="text-2xl font-bold text-blue-600">
+                <h2 className="text-2xl font-extrabold mb-2">Your player is:</h2>
+                <p className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
                   {guessedPlayer}
                 </p>
               </div>
 
-              <div className="py-2">
-                <p className="text-gray-700">
-                  It took me {questionsAsked} questions to guess your player!
-                </p>
-              </div>
+              <p className="text-gray-700">It took me {questionsAsked} questions to guess your player.</p>
 
-              <button
-                onClick={resetGame}
-                className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-medium mt-4"
-              >
-                Play Again
-              </button>
+              <div className="flex justify-center">
+                <button
+                  onClick={resetGame}
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-7 py-3 rounded-xl font-semibold mt-2 shadow-sm"
+                >
+                  Play Again
+                </button>
+              </div>
 
               <div className="mt-4">
                 <h3 className="font-medium text-gray-700 mb-1">Game Log:</h3>
@@ -674,6 +800,7 @@ const GuessYourLegend = () => {
           )}
         </>
       )}
+      </div>
     </div>
   );
 };

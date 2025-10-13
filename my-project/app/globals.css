@@ -12,7 +12,7 @@
 }
 
 html, body {
-  @apply min-h-screen bg-[#F2F4F7];
+  @apply min-h-screen;
 }
 
 .h-screen-safe {
