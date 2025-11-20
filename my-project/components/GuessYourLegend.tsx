@@ -468,7 +468,7 @@ const GuessYourLegend = () => {
       if (answer) {
         setGameState("result");
         setGuessedPlayer(currentCandidate.full_name);
-        addLog(`🏀 My guess is... **${currentCandidate.full_name}**!`);
+        addLog(`My guess is... **${currentCandidate.full_name}**!`);
         return;
       } else {
         let nextIndex = finalIndex + 1;
